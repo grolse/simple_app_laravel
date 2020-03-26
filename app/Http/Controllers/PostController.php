@@ -2,13 +2,27 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Services\PostService;
+use App\Http\Services\PostServiceInterface;
+use App\Models\Category;
 use App\Models\Post;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
+use function GuzzleHttp\Psr7\str;
 
 class PostController extends Controller
 {
     private const USER_ID = 1;
+
+    /** @var PostServiceInterface */
+    private $postService;
+
+    public function __construct(PostServiceInterface $postService)
+    {
+        $this->postService = $postService;
+    }
+
     /**
      * Display a listing of the resource.
      *
@@ -16,7 +30,14 @@ class PostController extends Controller
      */
     public function index()
     {
-        $posts = Post::all();
+
+        /** @var Category $category */
+        $category = Category::where('categories.id', 1)
+            ->join('posts', 'categories.id', '=', 'posts.category_id')
+            ->first();
+
+        //Lazy Loading
+        //Eager loading
 
         return view('posts.index', compact('posts'));
     }
@@ -66,11 +87,8 @@ class PostController extends Controller
      */
     public function show($id)
     {
-        //$post = Post::findOrFail($id);
 
-        /** @var Builder $qb */
-        $qb = Post::where('id', $id);
-        $post = $qb->first();
+        $post = $this->fetchPostOrFail($id);
 
         return view('posts.show', compact('post'));
     }
@@ -83,7 +101,7 @@ class PostController extends Controller
      */
     public function edit($id)
     {
-        $post = Post::findOrFail($id);
+        $post = $this->fetchPostOrFail($id);
 
         return view('posts.edit', compact('post'));
     }
@@ -103,11 +121,7 @@ class PostController extends Controller
                 'content' => 'required'
             ]);
 
-            /** @var Post $post */
-            $post = Post::findOrFail($id);
-            $post->title = $request->get('title');
-            $post->content = $request->get('content');
-            $post->save();
+            $this->postService->updatePost($id, $request->all());
 
             return redirect(route('posts.show', ['post' => $id]));
         } catch (\Exception $exception) {
@@ -128,5 +142,14 @@ class PostController extends Controller
 
         $post->delete();
         return redirect(route('posts.index'));
+    }
+
+    private function fetchPostOrFail(int $id)
+    {
+        try {
+            return $this->postService->getPostById($id);
+        } catch (\Exception $e) {
+            abort(Response::HTTP_NOT_FOUND, $e->getMessage());
+        }
     }
 }
